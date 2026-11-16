@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>小龙打靶 · 射击定位练习</title>
+<style>
+  :root{
+    --bg1:#dff0ff; --bg2:#c3dff5;
+    --ink:#33475b;
+    --card:rgba(255,255,255,.92);
+    --accent:#ff8c1a;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+    background:linear-gradient(var(--bg1),var(--bg2));
+    color:var(--ink);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    min-height:100vh;padding:14px;
+    user-select:none; -webkit-user-select:none;
+    overflow:hidden; touch-action:manipulation;
+  }
+  .wrap{width:min(100%,920px);text-align:center;display:flex;flex-direction:column;height:100%;}
+
+  h1{margin:4px 0 0;font-size:clamp(24px,5.5vw,38px);letter-spacing:1px;}
+  .sub{font-size:13px;opacity:.7;margin:2px 0 10px;}
+
+  .hud{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:10px;}
+  .stat{background:var(--card);border-radius:12px;padding:6px 14px;box-shadow:0 2px 0 rgba(0,0,0,.06);min-width:66px;}
+  .stat .label{font-size:11px;opacity:.6;}
+  .stat .val{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;}
+
+  /* 靶场 */
+  .range{
+    position:relative;flex:1;min-height:340px;border-radius:18px;overflow:hidden;
+    background:
+      radial-gradient(circle at 50% 50%,rgba(255,255,255,.55),rgba(255,255,255,0) 60%),
+      linear-gradient(#eaf5ff,#d6e9f7);
+    box-shadow:inset 0 4px 14px rgba(0,0,0,.10),0 6px 0 rgba(0,0,0,.08);
+    cursor:crosshair;
+    touch-action:manipulation;
+  }
+  /* 瞄准点阵背景 */
+  .range::before{
+    content:"";position:absolute;inset:0;
+    background-image:radial-gradient(circle,#9db8cc 1.1px,transparent 1.2px);
+    background-size:26px 26px;opacity:.35;pointer-events:none;
+  }
+
+  /* 目标：小龙 */
+  .target{
+    position:absolute;width:64px;height:64px;transform:translate(-50%,-50%);
+    cursor:pointer;pointer-events:auto;
+    animation:appear .18s ease-out;
+    z-index:2;
+  }
+  .target .dragon{width:100%;height:100%;filter:drop-shadow(0 4px 5px rgba(0,0,0,.25));}
+  .target.gold .dragon{filter:drop-shadow(0 0 8px rgba(255,180,0,.9));}
+  .target.leaving{animation:leave .18s ease-in forwards;}
+  .target.flash .dragon{animation:blink .2s linear 3;}
+  @keyframes appear{0%{transform:translate(-50%,-50%) scale(0);}100%{transform:translate(-50%,-50%) scale(1);}}
+  @keyframes leave{0%{transform:translate(-50%,-50%) scale(1);opacity:1;}100%{transform:translate(-50%,-50%) scale(.2);opacity:0;}}
+  @keyframes blink{50%{opacity:.2;}}
+
+  /* 命中特效 */
+  .fx{
+    position:absolute;transform:translate(-50%,-50%);pointer-events:none;z-index:5;
+    font-weight:800;color:#fff;font-size:26px;
+    text-shadow:0 2px 4px rgba(0,0,0,.4);
+    animation:pop .55s ease-out forwards;
+  }
+  @keyframes pop{0%{opacity:1;transform:translate(-50%,-50%) scale(.6);}
+    100%{opacity:0;transform:translate(-50%,-170%) scale(1.25);}}
+  .hitmark{
+    position:absolute;transform:translate(-50%,-50%);pointer-events:none;z-index:6;
+    width:26px;height:26px;
+    animation:hitfade .3s ease-out forwards;
+  }
+  .hitmark::before,.hitmark::after{content:"";position:absolute;background:#ff5a3c;border-radius:2px;}
+  .hitmark::before{left:0;top:11px;width:26px;height:3px;transform:rotate(45deg);}
+  .hitmark::after{left:0;top:11px;width:26px;height:3px;transform:rotate(-45deg);}
+  @keyframes hitfade{0%{opacity:1;transform:translate(-50%,-50%) scale(.7);}100%{opacity:0;transform:translate(-50%,-50%) scale(1.2);}}
+
+  /* 按钮 */
+  .btn{border:none;border-radius:15px;padding:12px 32px;margin-top:14px;font-size:16px;font-weight:700;color:#fff;cursor:pointer;letter-spacing:1px;
+    background:linear-gradient(#ffa94d,#f57c20);box-shadow:0 4px 0 #c45f12,0 8px 14px rgba(0,0,0,.15);transition:transform .06s,box-shadow .06s;font-family:inherit;}
+  .btn:active{transform:translateY(4px);box-shadow:0 1px 0 #c45f12,0 4px 8px rgba(0,0,0,.15);}
+
+  /* 浮层 */
+  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(30,45,60,.5);backdrop-filter:blur(3px);z-index:30;padding:20px;}
+  .overlay.hidden{display:none;}
+  .panel{background:var(--card);border-radius:22px;padding:28px 24px;text-align:center;width:min(100%,360px);box-shadow:0 10px 30px rgba(0,0,0,.3);}
+  .panel h2{margin:4px 0 6px;font-size:25px;}
+  .panel p{margin:6px 0;font-size:13.5px;opacity:.75;line-height:1.7;}
+  .big{font-size:42px;font-weight:800;color:var(--accent);margin:4px 0;}
+  .panel .btn{margin-top:12px;}
+  .hint{font-size:12px;opacity:.55;margin-top:12px;}
+  .dragon-hero{width:88px;height:88px;margin:0 auto;filter:drop-shadow(0 5px 6px rgba(0,0,0,.2));}
+  .stats2{display:flex;gap:8px;justify-content:center;margin-top:6px;}
+  .stats2 .s{background:#f2f7fb;border-radius:10px;padding:6px 12px;min-width:70px;}
+  .stats2 .s .l{font-size:11px;opacity:.6;}
+  .stats2 .s .v{font-size:18px;font-weight:700;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🐉 小龙打靶</h1>
+  <div class="sub">60 秒 · 快速瞄准点击小龙，练开枪定位</div>
+
+  <div class="hud">
+    <div class="stat"><div class="label">命中</div><div class="val" id="hits">0</div></div>
+    <div class="stat"><div class="label">时间</div><div class="val" id="time">60</div></div>
+    <div class="stat"><div class="label">命中率</div><div class="val" id="acc">100%</div></div>
+    <div class="stat"><div class="label">最高</div><div class="val" id="best">0</div></div>
+  </div>
+
+  <div class="range" id="range"></div>
+</div>
+
+<!-- 开始 -->
+<div class="overlay" id="startOverlay">
+  <div class="panel">
+    <div class="dragon-hero" id="heroStart"></div>
+    <h2>小龙打靶</h2>
+    <p>场上同时有 <b>6 只小龙</b>，点击打中得分。<br>
+    打中一只，新小龙会在别处冒出。<br>
+    小龙待久了会溜走（漏靶），瞄准要快！</p>
+    <button class="btn" id="startBtn">开始练习</button>
+    <div class="hint">手机、电脑都能玩 · 点空白处算脱靶</div>
+  </div>
+</div>
+
+<!-- 结束 -->
+<div class="overlay hidden" id="endOverlay">
+  <div class="panel">
+    <div class="dragon-hero" id="heroEnd"></div>
+    <h2 id="endTitle">练习结束</h2>
+    <div class="big" id="finalScore">0</div>
+    <p>本次命中数</p>
+    <div class="stats2">
+      <div class="s"><div class="l">命中率</div><div class="v" id="finalAcc">100%</div></div>
+      <div class="s"><div class="l">漏靶</div><div class="v" id="finalMiss">0</div></div>
+      <div class="s"><div class="l">开枪</div><div class="v" id="finalShot">0</div></div>
+    </div>
+    <p id="endMsg"></p>
+    <button class="btn" id="againBtn">再来一局</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var range = document.getElementById('range');
+  var hitsEl = document.getElementById('hits');
+  var timeEl = document.getElementById('time');
+  var accEl = document.getElementById('acc');
+  var bestEl = document.getElementById('best');
+  var startOverlay = document.getElementById('startOverlay');
+  var endOverlay = document.getElementById('endOverlay');
+  var startBtn = document.getElementById('startBtn');
+  var againBtn = document.getElementById('againBtn');
+  var finalScoreEl = document.getElementById('finalScore');
+  var finalAccEl = document.getElementById('finalAcc');
+  var finalMissEl = document.getElementById('finalMiss');
+  var finalShotEl = document.getElementById('finalShot');
+  var endMsgEl = document.getElementById('endMsg');
+  var endTitle = document.getElementById('endTitle');
+
+  var GAME_TIME = 60;
+  var TARGET_COUNT = 6;
+  var hits = 0, shots = 0, missed = 0;
+  var timeLeft = GAME_TIME;
+  var playing = false, timer = null;
+  var targets = []; // {el, x, y, timer, gold}
+  var best = parseInt(localStorage.getItem('aim_best')||'0',10)||0;
+  bestEl.textContent = best;
+
+  // ---- 奶黄色小龙 SVG ----
+  function dragonSVG(gold){
+    var body = gold ? '#ffd23f' : '#ffe066';
+    var belly = gold ? '#fff3b0' : '#fff6c2';
+    var horn = gold ? '#f09a1a' : '#f5a623';
+    return '<svg class="dragon" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">'+
+      '<ellipse cx="50" cy="60" rx="36" ry="34" fill="'+body+'"/>'+
+      '<ellipse cx="50" cy="70" rx="23" ry="19" fill="'+belly+'"/>'+
+      '<path d="M30 30 Q26 16 38 19 Q34 28 41 32 Z" fill="'+horn+'"/>'+
+      '<path d="M70 30 Q74 16 62 19 Q66 28 59 32 Z" fill="'+horn+'"/>'+
+      '<circle cx="40" cy="50" r="7.5" fill="#3a2a1a"/>'+
+      '<circle cx="60" cy="50" r="7.5" fill="#3a2a1a"/>'+
+      '<circle cx="42.5" cy="47.5" r="2.6" fill="#fff"/>'+
+      '<circle cx="62.5" cy="47.5" r="2.6" fill="#fff"/>'+
+      '<circle cx="31" cy="60" r="5.5" fill="#ffb3b3" opacity=".75"/>'+
+      '<circle cx="69" cy="60" r="5.5" fill="#ffb3b3" opacity=".75"/>'+
+      '<path d="M43 62 Q50 69 57 62" stroke="#3a2a1a" stroke-width="2.6" fill="none" stroke-linecap="round"/>'+
+      '</svg>';
+  }
+  document.getElementById('heroStart').innerHTML = dragonSVG(false);
+  document.getElementById('heroEnd').innerHTML = dragonSVG(false);
+
+  // ---- 音效 ----
+  var audioCtx = null;
+  function ensureAudio(){
+    if(!audioCtx){ try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+    if(audioCtx && audioCtx.state==='suspended'){ audioCtx.resume(); }
+  }
+  function gunSound(){
+    if(!audioCtx) return;
+    var dur = 0.07;
+    var buffer = audioCtx.createBuffer(1, audioCtx.sampleRate*dur, audioCtx.sampleRate);
+    var d = buffer.getChannelData(0);
+    for(var i=0;i<d.length;i++){ d[i] = (Math.random()*2-1) * Math.pow(1-i/d.length,2.2); }
+    var src = audioCtx.createBufferSource(); src.buffer = buffer;
+    var g = audioCtx.createGain(); g.gain.value = 0.28;
+    src.connect(g); g.connect(audioCtx.destination); src.start();
+  }
+  function hitSound(){
+    if(!audioCtx) return;
+    var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type='sine'; o.frequency.value=1180;
+    g.gain.value=0.15; g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.12);
+    o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime+0.12);
+  }
+
+  // ---- 位置与目标 ----
+  function size(){
+    var w = range.clientWidth || 600;
+    return Math.max(48, Math.min(64, Math.round(w*0.11)));
+  }
+  function randPos(sz){
+    var W = range.clientWidth, H = range.clientHeight;
+    var m = 8;
+    for(var a=0;a<120;a++){
+      var x = sz/2 + Math.random()*(W-sz);
+      var y = sz/2 + Math.random()*(H-sz);
+      var ok = true;
+      for(var i=0;i<targets.length;i++){
+        var t = targets[i];
+        var dx = t.x - x, dy = t.y - y;
+        if(dx*dx+dy*dy < (sz+m)*(sz+m)){ ok=false; break; }
+      }
+      if(ok) return {x:x, y:y};
+    }
+    return {x: sz/2+Math.random()*(W-sz), y: sz/2+Math.random()*(H-sz)};
+  }
+  function stayDuration(){
+    return Math.max(1000, 2300 - (GAME_TIME-timeLeft)*20);
+  }
+  function spawn(){
+    if(!playing) return;
+    var sz = size();
+    var gold = Math.random() < 0.08;
+    var pos = randPos(sz);
+    var el = document.createElement('div');
+    el.className = 'target' + (gold?' gold':'');
+    el.style.left = pos.x+'px'; el.style.top = pos.y+'px';
+    el.style.width = sz+'px'; el.style.height = sz+'px';
+    el.innerHTML = dragonSVG(gold);
+    el.dataset.gold = gold?'1':'0';
+    range.appendChild(el);
+    var t = {el:el, x:pos.x, y:pos.y, gold:gold};
+    t.timer = setTimeout(function(){ missTarget(t); }, gold ? stayDuration()*0.6 : stayDuration());
+    targets.push(t);
+  }
+  function missTarget(t){
+    if(!playing) return;
+    var idx = targets.indexOf(t);
+    if(idx<0) return;
+    targets.splice(idx,1);
+    clearTimeout(t.timer);
+    t.el.classList.add('flash');
+    setTimeout(function(){ if(t.el.parentNode) t.el.parentNode.removeChild(t.el); }, 350);
+    missed++;
+    spawn();
+  }
+  function hitTarget(t, px, py){
+    var idx = targets.indexOf(t);
+    if(idx<0) return;
+    targets.splice(idx,1);
+    clearTimeout(t.timer);
+    hits++;
+    shots++;
+    hitsEl.textContent = hits;
+    updateAcc();
+    // 命中叉标记
+    var hm = document.createElement('div');
+    hm.className='hitmark'; hm.style.left=px+'px'; hm.style.top=py+'px';
+    range.appendChild(hm);
+    setTimeout(function(){ hm.remove(); },300);
+    // 加分飘字
+    var pts = t.gold ? 3 : 1;
+    var fx = document.createElement('div');
+    fx.className='fx'; fx.style.left=t.x+'px'; fx.style.top=t.y+'px';
+    fx.textContent = '+' + pts;
+    range.appendChild(fx);
+    setTimeout(function(){ fx.remove(); },550);
+    // 移除目标
+    t.el.classList.add('leaving');
+    setTimeout(function(){ if(t.el.parentNode) t.el.parentNode.removeChild(t.el); },180);
+    // 音效
+    gunSound(); hitSound();
+    spawn();
+  }
+  function updateAcc(){
+    accEl.textContent = shots>0 ? Math.round(hits/shots*100)+'%' : '100%';
+  }
+
+  // ---- 交互 ----
+  range.addEventListener('pointerdown', function(e){
+    if(!playing) return;
+    ensureAudio();
+    var t = e.target.closest('.target');
+    if(t){
+      e.preventDefault();
+      var obj = null;
+      for(var i=0;i<targets.length;i++){ if(targets[i].el===t){ obj=targets[i]; break; } }
+      if(obj){
+        var rect = range.getBoundingClientRect();
+        hitTarget(obj, e.clientX-rect.left, e.clientY-rect.top);
+        return;
+      }
+    }
+    // 脱靶
+    shots++;
+    updateAcc();
+    gunSound();
+    var rect = range.getBoundingClientRect();
+    var hm = document.createElement('div');
+    hm.className='hitmark'; hm.style.left=(e.clientX-rect.left)+'px'; hm.style.top=(e.clientY-rect.top)+'px';
+    hm.style.filter='grayscale(1) opacity(.5)';
+    range.appendChild(hm);
+    setTimeout(function(){ hm.remove(); },300);
+  });
+
+  // ---- 计时 ----
+  function tick(){
+    timeLeft--; timeEl.textContent = timeLeft;
+    if(timeLeft<=0) endGame();
+  }
+  function startGame(){
+    ensureAudio();
+    hits=0; shots=0; missed=0; timeLeft=GAME_TIME;
+    hitsEl.textContent=0; timeEl.textContent=GAME_TIME; accEl.textContent='100%';
+    range.innerHTML='';
+    targets=[];
+    playing=true;
+    startOverlay.classList.add('hidden');
+    endOverlay.classList.add('hidden');
+    timer=setInterval(tick,1000);
+    for(var i=0;i<TARGET_COUNT;i++){ spawn(); }
+  }
+  function endGame(){
+    playing=false;
+    clearInterval(timer);
+    // 清理
+    targets.forEach(function(t){ clearTimeout(t.timer); });
+    targets=[];
+    range.innerHTML='';
+    if(hits>best){ best=hits; localStorage.setItem('aim_best',best); bestEl.textContent=best; }
+    finalScoreEl.textContent=hits;
+    finalAccEl.textContent = shots>0 ? Math.round(hits/shots*100)+'%' : '100%';
+    finalMissEl.textContent = missed;
+    finalShotEl.textContent = shots;
+    if(hits>best){ endTitle.textContent='新纪录！'; }
+    if(hits>=60){ endMsgEl.textContent='枪法又快又准，接近满中！'; }
+    else if(hits>=40){ endMsgEl.textContent='定位手感不错，继续刷命中率！'; }
+    else if(hits>=25){ endMsgEl.textContent='稳一点，先瞄准再点，减少脱靶。'; }
+    else{ endMsgEl.textContent='别急着点，看清小龙位置再开枪。'; }
+    endOverlay.classList.remove('hidden');
+  }
+
+  startBtn.addEventListener('click', startGame);
+  againBtn.addEventListener('click', startGame);
+})();
+</script>
+</body>
+</html>
